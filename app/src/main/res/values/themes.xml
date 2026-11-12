@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RecipeFinder" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/accent_green</item>
+        <item name="colorSecondaryVariant">@color/green_700</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:statusBarColor">@color/primary_dark</item>
+        <item name="android:windowBackground">@color/background_light</item>
+
+        <!-- Input field black theme color overrides -->
+        <item name="colorControlActivated">@color/black</item>
+        <item name="colorControlHighlight">#22000000</item>
+        <item name="textInputStyle">@style/Widget.App.TextInputLayout</item>
+        <item name="editTextStyle">@style/Widget.App.EditText</item>
+    </style>
+
+    <style name="Widget.App.TextInputLayout" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="boxStrokeColor">@color/input_box_stroke</item>
+        <item name="hintTextColor">@color/input_hint_color</item>
+        <item name="android:textColorHint">#757575</item>
+    </style>
+
+    <style name="Widget.App.EditText" parent="Widget.MaterialComponents.TextInputEditText.OutlinedBox">
+        <item name="android:textColor">@color/black</item>
+        <item name="android:textColorHint">#757575</item>
+    </style>
+</resources>
