@@ -15,18 +15,29 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.recipefinder.R
 import com.example.recipefinder.adapter.RecipeAdapter
+import com.example.recipefinder.data.local.RecipeDatabase
+import com.example.recipefinder.data.model.FavoriteRecipe
+import com.example.recipefinder.data.remote.RetrofitClient
+import com.example.recipefinder.data.repository.RecipeRepository
 import com.example.recipefinder.databinding.ActivityMain2Binding
 import com.example.recipefinder.databinding.DialogRecognitionResultBinding
 import com.example.recipefinder.ml.IngredientClassifier
 import com.example.recipefinder.ml.Recognition
 import com.example.recipefinder.model.Recipe
+import com.example.recipefinder.ui.favourites.FavouritesActivity
 import com.example.recipefinder.ui.login.LoginActivity
+import com.example.recipefinder.ui.receipt.ReceiptActivity
+import com.example.recipefinder.ui.recipes.RecipeListActivity
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 class HomeActivity : AppCompatActivity() {
@@ -35,8 +46,9 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private lateinit var ingredientClassifier: IngredientClassifier
     private lateinit var recipeAdapter: RecipeAdapter
+    private lateinit var viewModel: HomeViewModel
 
-    private var allRecipes = listOf<Recipe>()
+    private var defaultRecipes = listOf<Recipe>()
 
     // Camera Result Launcher
     private val cameraLauncher = registerForActivityResult(
@@ -89,9 +101,18 @@ class HomeActivity : AppCompatActivity() {
         auth = FirebaseAuth.getInstance()
         ingredientClassifier = IngredientClassifier(this)
 
+        val db = RecipeDatabase.getInstance(this)
+        val repository = RecipeRepository(
+            api = RetrofitClient.api,
+            favoriteDao = db.favoriteDao(),
+            searchHistoryDao = db.searchHistoryDao()
+        )
+        viewModel = HomeViewModel(repository)
+
         setupUserHeader()
         setupRecipeList()
         setupClickListeners()
+        setupRecentSearchObservers()
     }
 
     private fun setupUserHeader() {
@@ -102,8 +123,8 @@ class HomeActivity : AppCompatActivity() {
         }
 
         val name = when {
-            !currentUser.displayName.isNull_or_empty() -> currentUser.displayName
-            !currentUser.email.isNull_or_empty() -> currentUser.email!!.substringBefore("@")
+            !currentUser.displayName.isNullOrEmpty() -> currentUser.displayName
+            !currentUser.email.isNullOrEmpty() -> currentUser.email!!.substringBefore("@")
                 .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
             else -> "Chef"
         }
@@ -111,72 +132,83 @@ class HomeActivity : AppCompatActivity() {
         binding.tvWelcomeUser.text = "Welcome Back, $name! 👋"
     }
 
-    private fun CharSequence?.isNull_or_empty(): Boolean {
-        return this == null || this.isEmpty()
+    private fun setupRecentSearchObservers() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.recentSearches.collect { searches ->
+                    if (searches.isNotEmpty()) {
+                        binding.chipGroupRecent.removeAllViews()
+                        for (search in searches) {
+                            val chip = Chip(this@HomeActivity).apply {
+                                text = "🔍 ${search.query}"
+                                isClickable = true
+                                setChipBackgroundColorResource(R.color.background_light)
+                                setTextColor(ContextCompat.getColor(context, R.color.text_primary))
+                                setOnClickListener {
+                                    binding.etSearchIngredient.setText(search.query)
+                                    performIngredientSearch()
+                                }
+                            }
+                            binding.chipGroupRecent.addView(chip)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun setupRecipeList() {
-        allRecipes = listOf(
+        defaultRecipes = listOf(
             Recipe(
-                id = "1",
-                title = "Garlic Butter Salmon",
-                category = "Seafood",
+                id = "52772",
+                title = "Teriyaki Chicken Casserole",
+                category = "Chicken",
                 cookingTime = "25 mins",
                 calories = "450 kcal",
                 rating = 4.9f,
-                imageUrl = "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=500",
-                ingredients = listOf("Salmon", "Garlic", "Butter", "Lemon")
+                imageUrl = "https://www.themealdb.com/images/media/meals/wvpsxx1468256321.jpg",
+                ingredients = listOf("Chicken", "Soy Sauce", "Rice")
             ),
             Recipe(
-                id = "2",
-                title = "Classic Margherita Pizza",
-                category = "Italian",
-                cookingTime = "20 mins",
+                id = "52882",
+                title = "Three Fish Pie",
+                category = "Seafood",
+                cookingTime = "35 mins",
                 calories = "520 kcal",
                 rating = 4.8f,
-                imageUrl = "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=500",
-                ingredients = listOf("Tomato", "Cheese", "Dough", "Basil")
+                imageUrl = "https://www.themealdb.com/images/media/meals/spswwy1511723449.jpg",
+                ingredients = listOf("Fish", "Potatoes", "Butter")
             ),
             Recipe(
-                id = "3",
-                title = "Healthy Avocado Toast",
-                category = "Breakfast",
-                cookingTime = "10 mins",
+                id = "52977",
+                title = "Corba Lentil Soup",
+                category = "Soup",
+                cookingTime = "20 mins",
                 calories = "280 kcal",
                 rating = 4.7f,
-                imageUrl = "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500",
-                ingredients = listOf("Avocado", "Bread", "Egg", "Pepper")
-            ),
-            Recipe(
-                id = "4",
-                title = "Spicy Chicken Tacos",
-                category = "Mexican",
-                cookingTime = "30 mins",
-                calories = "390 kcal",
-                rating = 4.9f,
-                imageUrl = "https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=500",
-                ingredients = listOf("Chicken", "Tortilla", "Bell Pepper", "Onion")
-            ),
-            Recipe(
-                id = "5",
-                title = "Mushroom Truffle Risotto",
-                category = "Italian",
-                cookingTime = "35 mins",
-                calories = "420 kcal",
-                rating = 4.6f,
-                imageUrl = "https://images.unsplash.com/photo-1633964913295-ceb43826e7c9?w=500",
-                ingredients = listOf("Mushroom", "Rice", "Butter", "Parmesan")
+                imageUrl = "https://www.themealdb.com/images/media/meals/58o10a1562512614.jpg",
+                ingredients = listOf("Lentils", "Onion", "Carrot")
             )
         )
 
         recipeAdapter = RecipeAdapter(
-            recipes = allRecipes,
+            recipes = defaultRecipes,
             onFavoriteClick = { recipe ->
-                val status = if (recipe.isFavorite) "Added to Favourites ❤️" else "Removed from Favourites"
-                Toast.makeText(this, "${recipe.title}: $status", Toast.LENGTH_SHORT).show()
+                viewModel.removeFavorite(
+                    FavoriteRecipe(
+                        idMeal = recipe.id,
+                        strMeal = recipe.title,
+                        strMealThumb = recipe.imageUrl,
+                        strCategory = recipe.category,
+                        strArea = "International"
+                    )
+                )
             },
             onRecipeClick = { recipe ->
-                Toast.makeText(this, "Opening ${recipe.title}", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this, com.example.recipefinder.ui.details.RecipeDetailsActivity::class.java).apply {
+                    putExtra("MEAL_ID", recipe.id)
+                }
+                startActivity(intent)
             }
         )
 
@@ -201,21 +233,19 @@ class HomeActivity : AppCompatActivity() {
             galleryLauncher.launch("image/*")
         }
 
+        // Receipt Scanner Card
+        binding.cardReceiptScanner.setOnClickListener {
+            startActivity(Intent(this, ReceiptActivity::class.java))
+        }
+
+        // Favourites See All Button
+        binding.tvSeeAll.setOnClickListener {
+            startActivity(Intent(this, FavouritesActivity::class.java))
+        }
+
         // Search Button
         binding.btnSearch.setOnClickListener {
             performIngredientSearch()
-        }
-
-        // Recent Search Chips
-        for (i in 0 until binding.chipGroupRecent.childCount) {
-            val child = binding.chipGroupRecent.getChildAt(i)
-            if (child is Chip) {
-                child.setOnClickListener {
-                    val cleanSearch = child.text.toString().replace(Regex("[^a-zA-Z\\s]"), "").trim()
-                    binding.etSearchIngredient.setText(cleanSearch)
-                    performIngredientSearch()
-                }
-            }
         }
     }
 
@@ -239,7 +269,7 @@ class HomeActivity : AppCompatActivity() {
     private fun showCameraPermissionRationaleDialog() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Camera Permission Needed")
-            .setMessage("Recipe Finder requires camera access to scan food ingredients and detect them using AI.")
+            .setMessage("Recipe Finder uses your camera to take photos of food ingredients and detect them using AI.")
             .setPositiveButton("Grant Permission") { _, _ ->
                 requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
@@ -273,6 +303,28 @@ class HomeActivity : AppCompatActivity() {
 
         dialogBinding.ivCapturedPreview.setImageBitmap(bitmap)
 
+        if (recognitions.isEmpty()) {
+            dialogBinding.tvIngredient1.text = "Ingredient Not Recognized"
+            dialogBinding.tvConfidence1.text = "Low Confidence"
+            dialogBinding.pbConfidence1.progress = 0
+
+            dialogBinding.tvIngredient2.text = "Please ensure food is clearly visible"
+            dialogBinding.tvConfidence2.text = ""
+            dialogBinding.pbConfidence2.progress = 0
+
+            dialogBinding.tvIngredient3.text = "Or search manually using the search bar"
+            dialogBinding.tvConfidence3.text = ""
+            dialogBinding.pbConfidence3.progress = 0
+
+            dialogBinding.btnSearchWithIngredients.text = "Try Another Photo"
+            dialogBinding.btnSearchWithIngredients.setOnClickListener {
+                dialog.dismiss()
+                checkCameraPermissionAndLaunch()
+            }
+            dialog.show()
+            return
+        }
+
         if (recognitions.size >= 1) {
             val r1 = recognitions[0]
             dialogBinding.tvIngredient1.text = "1. ${r1.title}"
@@ -286,9 +338,9 @@ class HomeActivity : AppCompatActivity() {
             dialogBinding.tvConfidence2.text = r2.confidencePercentage
             dialogBinding.pbConfidence2.progress = (r2.confidence * 100).toInt()
         } else {
-            dialogBinding.tvIngredient2.text = "2. Bell Pepper"
-            dialogBinding.tvConfidence2.text = "81.5%"
-            dialogBinding.pbConfidence2.progress = 81
+            dialogBinding.tvIngredient2.visibility = View.GONE
+            dialogBinding.tvConfidence2.visibility = View.GONE
+            dialogBinding.pbConfidence2.visibility = View.GONE
         }
 
         if (recognitions.size >= 3) {
@@ -297,17 +349,20 @@ class HomeActivity : AppCompatActivity() {
             dialogBinding.tvConfidence3.text = r3.confidencePercentage
             dialogBinding.pbConfidence3.progress = (r3.confidence * 100).toInt()
         } else {
-            dialogBinding.tvIngredient3.text = "3. Onion"
-            dialogBinding.tvConfidence3.text = "67.0%"
-            dialogBinding.pbConfidence3.progress = 67
+            dialogBinding.tvIngredient3.visibility = View.GONE
+            dialogBinding.tvConfidence3.visibility = View.GONE
+            dialogBinding.pbConfidence3.visibility = View.GONE
         }
 
-        val topIngredient = if (recognitions.isNotEmpty()) recognitions[0].title else "Ingredients"
-        dialogBinding.btnSearchWithIngredients.text = "Search Recipes with $topIngredient"
+        val topIngredient = recognitions[0].title
+        dialogBinding.btnSearchWithIngredients.text = "Search Recipes for '$topIngredient'"
 
         dialogBinding.btnSearchWithIngredients.setOnClickListener {
-            binding.etSearchIngredient.setText(topIngredient)
-            performIngredientSearch()
+            viewModel.saveSearch(topIngredient)
+            val intent = Intent(this, RecipeListActivity::class.java).apply {
+                putExtra("SEARCH_INGREDIENT", topIngredient)
+            }
+            startActivity(intent)
             dialog.dismiss()
         }
 
@@ -317,23 +372,15 @@ class HomeActivity : AppCompatActivity() {
     private fun performIngredientSearch() {
         val query = binding.etSearchIngredient.text?.toString()?.trim() ?: ""
         if (query.isEmpty()) {
-            recipeAdapter.updateData(allRecipes)
+            Toast.makeText(this, "Please enter an ingredient to search", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val filtered = allRecipes.filter { recipe ->
-            recipe.title.contains(query, ignoreCase = true) ||
-                    recipe.category.contains(query, ignoreCase = true) ||
-                    recipe.ingredients.any { it.contains(query, ignoreCase = true) }
+        viewModel.saveSearch(query)
+        val intent = Intent(this, RecipeListActivity::class.java).apply {
+            putExtra("SEARCH_INGREDIENT", query)
         }
-
-        if (filtered.isNotEmpty()) {
-            recipeAdapter.updateData(filtered)
-            Toast.makeText(this, "Found ${filtered.size} recipes for '$query'", Toast.LENGTH_SHORT).show()
-        } else {
-            recipeAdapter.updateData(allRecipes)
-            Toast.makeText(this, "No specific match for '$query'. Showing popular recipes.", Toast.LENGTH_SHORT).show()
-        }
+        startActivity(intent)
     }
 
     private fun navigateToLogin() {

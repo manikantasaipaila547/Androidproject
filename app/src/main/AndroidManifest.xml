@@ -45,5 +45,21 @@
             android:name=".ui.home.HomeActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.receipt.ReceiptActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.recipes.RecipeListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.details.RecipeDetailsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.favourites.FavouritesActivity"
+            android:exported="false" />
+
     </application>
 </manifest>

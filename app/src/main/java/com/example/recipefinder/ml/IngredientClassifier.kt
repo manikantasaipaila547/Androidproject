@@ -25,6 +25,9 @@ class IngredientClassifier(private val context: Context) {
     private val MODEL_FILE = "ingredient_model.tflite"
     private val LABELS_FILE = "labels.txt"
 
+    // Minimum confidence threshold to consider a prediction valid (e.g. 5%)
+    private val CONFIDENCE_THRESHOLD = 0.05f
+
     init {
         initClassifier()
         loadLabels()
@@ -33,7 +36,7 @@ class IngredientClassifier(private val context: Context) {
     private fun initClassifier() {
         try {
             val options = ImageClassifier.ImageClassifierOptions.builder()
-                .setMaxResults(3)
+                .setMaxResults(5)
                 .build()
             imageClassifier = ImageClassifier.createFromFileAndOptions(
                 context,
@@ -66,7 +69,7 @@ class IngredientClassifier(private val context: Context) {
     }
 
     fun classifyImage(bitmap: Bitmap): List<Recognition> {
-        val classifier = imageClassifier ?: return getFallbackRecognitions()
+        val classifier = imageClassifier ?: return emptyList()
 
         return try {
             val tensorImage = TensorImage.fromBitmap(bitmap)
@@ -76,33 +79,31 @@ class IngredientClassifier(private val context: Context) {
             if (results.isNotEmpty()) {
                 val categoryList = results[0].categories
                 for (category in categoryList) {
-                    val labelStr = category.label ?: ""
-                    val rawLabel = if (labelStr.isNotEmpty()) {
-                        labelStr
-                    } else {
-                        val index = category.index
-                        if (index in labels.indices) labels[index] else "Ingredient #$index"
-                    }
-                    val formattedTitle = formatLabel(rawLabel)
-                    recognitions.add(
-                        Recognition(
-                            id = category.index.toString(),
-                            title = formattedTitle,
-                            confidence = category.score
+                    if (category.score >= CONFIDENCE_THRESHOLD) {
+                        val labelStr = category.label ?: ""
+                        val rawLabel = if (labelStr.isNotEmpty()) {
+                            labelStr
+                        } else {
+                            val index = category.index
+                            if (index in labels.indices) labels[index] else "Ingredient #$index"
+                        }
+                        val formattedTitle = formatLabel(rawLabel)
+                        recognitions.add(
+                            Recognition(
+                                id = category.index.toString(),
+                                title = formattedTitle,
+                                confidence = category.score
+                            )
                         )
-                    )
+                    }
                 }
             }
 
-            if (recognitions.isNotEmpty()) {
-                recognitions.sortByDescending { it.confidence }
-                recognitions.take(3)
-            } else {
-                getFallbackRecognitions()
-            }
+            recognitions.sortByDescending { it.confidence }
+            recognitions.take(3)
         } catch (e: Exception) {
             e.printStackTrace()
-            getFallbackRecognitions()
+            emptyList()
         }
     }
 
@@ -112,14 +113,6 @@ class IngredientClassifier(private val context: Context) {
             .joinToString(" ") { word ->
                 word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
             }
-    }
-
-    private fun getFallbackRecognitions(): List<Recognition> {
-        return listOf(
-            Recognition("1", "Tomato", 0.92f),
-            Recognition("2", "Bell Pepper", 0.84f),
-            Recognition("3", "Onion", 0.76f)
-        )
     }
 
     fun close() {
